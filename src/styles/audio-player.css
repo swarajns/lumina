@@ -1,0 +1,23 @@
+/* Custom styling for audio player */
+.audio-player-wrapper .rhap_container {
+  background-color: #f8fafc !important;
+  border-radius: 8px !important;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1) !important;
+  border: 1px solid #e2e8f0 !important;
+}
+
+.audio-player-wrapper .rhap_main-controls-button {
+  color: #3b82f6 !important;
+}
+
+.audio-player-wrapper .rhap_progress-filled {
+  background-color: #3b82f6 !important;
+}
+
+.audio-player-wrapper .rhap_volume-bar-area {
+  background-color: #e2e8f0 !important;
+}
+
+.audio-player-wrapper .rhap_volume-filled {
+  background-color: #3b82f6 !important;
+}

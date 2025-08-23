@@ -1,0 +1,33 @@
+.synced-transcript {
+  font-family: 'Inter', sans-serif;
+}
+
+.transcript-segment {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.transcript-segment:hover {
+  transform: translateX(2px);
+}
+
+.transcript-container {
+  scroll-behavior: smooth;
+}
+
+.transcript-container::-webkit-scrollbar {
+  width: 6px;
+}
+
+.transcript-container::-webkit-scrollbar-track {
+  background: #f1f5f9;
+  border-radius: 3px;
+}
+
+.transcript-container::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 3px;
+}
+
+.transcript-container::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
