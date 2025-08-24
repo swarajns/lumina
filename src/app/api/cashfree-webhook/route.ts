@@ -21,7 +21,7 @@ export async function POST(request: NextRequest) {
     // Verify Signature
     const dataToVerify = timestamp + body
     const expectedSignature = crypto
-      .createHmac('sha256', process.env.CASHBASE_SECRET_KEY!)
+      .createHmac('sha256', process.env.CASHFREE_SECRET_KEY!)
       .update(dataToVerify)
       .digest('base64')
 

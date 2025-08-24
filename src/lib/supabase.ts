@@ -1,10 +1,17 @@
-import { createClient } from '@supabase/supabase-js'
+import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 
-export const supabase = createClient(supabaseUrl, supabaseKey)
+// Export the singleton instance (existing)
+export const supabase = createSupabaseClient(supabaseUrl, supabaseKey)
 
+// 🔥 NEW: Export createClient function for dashboard imports
+export function createClient() {
+  return createSupabaseClient(supabaseUrl, supabaseKey)
+}
+
+// Export types (existing)
 export type Meeting = {
   id: string
   title: string | null

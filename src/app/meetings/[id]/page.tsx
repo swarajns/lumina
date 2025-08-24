@@ -2,8 +2,8 @@
 
 import React, { useState, useEffect } from 'react'
 import { useParams, useRouter } from 'next/navigation'
-import { Button } from '@/components/ui/Button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import CustomAudioPlayer from '@/components/AudioPlayer'
 import SyncedTranscript from '@/components/SyncedTranscript'
 import MeetingNotes from '@/components/MeetingNotes'

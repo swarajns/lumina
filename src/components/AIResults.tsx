@@ -1,8 +1,8 @@
 'use client'
 
 import { useState } from 'react'
-import { Card, CardContent, CardHeader, CardTitle } from './ui/Card'
-import { Button } from './ui/Button'
+import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
+import { Button } from './ui/button'
 import { Check, Clock, AlertCircle, Copy, Download } from 'lucide-react'
 import type { AIAnalysis, ActionItem } from '@/types'
 

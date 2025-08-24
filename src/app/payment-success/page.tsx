@@ -3,8 +3,8 @@
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { useRouter } from 'next/navigation'
-import { Card, CardContent } from '@/components/ui/Card'
-import { Button } from '@/components/ui/Button'
+import { Card, CardContent } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
 import { CheckCircle, ArrowRight, Star, Crown, Building, Zap } from 'lucide-react'
 
 export default function PaymentSuccessPage() {

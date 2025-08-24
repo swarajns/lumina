@@ -1,8 +1,8 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { Button } from './ui/Button'
-import { Card, CardContent, CardHeader, CardTitle } from './ui/Card'
+import { Button } from './ui/button'
+import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
 import { Mic, Video, Monitor, Square, Play, Pause } from 'lucide-react'
 import { RecordingManager } from '@/lib/recording'
 import { formatDuration } from '@/lib/utils'

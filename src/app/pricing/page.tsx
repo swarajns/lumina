@@ -4,9 +4,9 @@ import React, { useState, useEffect } from 'react'
 import Script from 'next/script'
 import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
-import { Button } from '@/components/ui/Button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
-import { Check, Star, Zap, Crown, Building, LogOut, User } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Check, Star, Zap, Crown, Building } from 'lucide-react'
 
 const plans = [
   {
@@ -137,27 +137,18 @@ export default function PricingPage() {
     return () => subscription.unsubscribe()
   }, [router])
 
-  const handleSignOut = async () => {
-    try {
-      await supabase.auth.signOut()
-      router.push('/login')
-    } catch (error) {
-      console.error('Error signing out:', error)
-    }
-  }
-
   const getButtonText = (plan: any) => {
     if (plan.name === 'Free') return 'Get Started Free'
+    if (plan.isEnterprise) return 'Contact Sales'
     return 'Start Free Trial'
   }
 
   const getButtonAction = (plan: any) => {
     if (plan.name === 'Free') {
-      return () => (window.location.href = '/record')
+      return () => router.push('/record')
     }
     if (plan.isEnterprise) {
-      return () =>
-        (window.location.href = 'mailto:sales@lumina.ai?subject=Enterprise Plan Inquiry')
+      return () => window.open('mailto:sales@lumina.ai?subject=Enterprise Plan Inquiry', '_blank')
     }
 
     return async () => {
@@ -191,10 +182,7 @@ export default function PricingPage() {
         const { orderId, paymentSessionId } = await response.json()
 
         const cashfree = new (window as any).Cashfree({
-          mode:
-            process.env.NEXT_PUBLIC_CASHFREE_ENVIRONMENT === 'PRODUCTION'
-              ? 'production'
-              : 'sandbox',
+          mode: process.env.NEXT_PUBLIC_CASHFREE_ENVIRONMENT === 'PRODUCTION' ? 'production' : 'sandbox',
         })
 
         const checkoutOptions = {
@@ -219,11 +207,9 @@ export default function PricingPage() {
           alert('Payment failed: ' + result.error.message)
         } else if (result.redirect) {
           console.log('✅ Payment completed, redirecting to success page...')
-          // Manual redirect to success page
           window.location.href = `/payment-success?order_id=${orderId}&plan=${plan.name}&amount=${amount}&billing=${isYearly ? 'yearly' : 'monthly'}`
         } else {
           console.log('⏳ Payment processing...')
-          // Wait a bit and then redirect (fallback)
           setTimeout(() => {
             window.location.href = `/payment-success?order_id=${orderId}&plan=${plan.name}&amount=${amount}&billing=${isYearly ? 'yearly' : 'monthly'}`
           }, 3000)
@@ -250,17 +236,14 @@ export default function PricingPage() {
     const price = isYearly ? plan.price.yearly : plan.price.monthly
     const yearlyMonthlyPrice = plan.price.yearly
     const monthlySavings = (
-      ((plan.price.monthly - plan.price.yearly) / plan.price.monthly) *
-      100
+      ((plan.price.monthly - plan.price.yearly) / plan.price.monthly) * 100
     ).toFixed(0)
 
     if (isYearly) {
       return (
         <div>
           <div className="flex items-baseline gap-1">
-            <span className="text-4xl font-bold text-gray-900">
-              ₹{yearlyMonthlyPrice}
-            </span>
+            <span className="text-4xl font-bold text-gray-900">₹{yearlyMonthlyPrice}</span>
             <span className="text-gray-600">/month</span>
           </div>
           <div className="text-sm text-gray-500 mt-1">
@@ -294,10 +277,10 @@ export default function PricingPage() {
   // Show loading spinner while checking authentication
   if (authLoading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-white flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading...</p>
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <div className="glass-card p-8 text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-4 border-black border-t-transparent mx-auto mb-4"></div>
+          <div className="text-black font-medium">Loading...</div>
         </div>
       </div>
     )
@@ -313,36 +296,6 @@ export default function PricingPage() {
       />
       
       <div className="min-h-screen bg-gradient-to-br from-gray-50 to-white">
-        {/* User Header */}
-        <div className="bg-white shadow-sm border-b">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-            <div className="flex justify-between items-center">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white font-semibold text-lg">
-                  {user?.user_metadata?.full_name?.[0]?.toUpperCase() || 
-                   user?.email?.toUpperCase() || 
-                   'U'}
-                </div>
-                <div>
-                  <p className="font-medium text-gray-900">
-                    {user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'User'}
-                  </p>
-                  <p className="text-sm text-gray-500">{user?.email}</p>
-                </div>
-              </div>
-              <Button
-                onClick={handleSignOut}
-                variant="outline"
-                size="sm"
-                className="flex items-center gap-2"
-              >
-                <LogOut className="h-4 w-4" />
-                Sign Out
-              </Button>
-            </div>
-          </div>
-        </div>
-
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
           {/* Header */}
           <div className="text-center mb-16">
@@ -351,17 +304,12 @@ export default function PricingPage() {
             </h1>
             <p className="text-xl text-gray-600 mb-8 max-w-3xl mx-auto">
               Transform your meetings with AI-powered transcription, smart
-              summaries, and powerful analytics. Start free, upgrade as you
-              grow.
+              summaries, and powerful analytics. Start free, upgrade as you grow.
             </p>
 
             {/* Billing Toggle */}
             <div className="flex items-center justify-center gap-4 mb-12">
-              <span
-                className={`text-sm font-medium ${
-                  !isYearly ? 'text-gray-900' : 'text-gray-500'
-                }`}
-              >
+              <span className={`text-sm font-medium ${!isYearly ? 'text-gray-900' : 'text-gray-500'}`}>
                 Monthly
               </span>
               <button
@@ -376,11 +324,7 @@ export default function PricingPage() {
                   }`}
                 />
               </button>
-              <span
-                className={`text-sm font-medium ${
-                  isYearly ? 'text-gray-900' : 'text-gray-500'
-                }`}
-              >
+              <span className={`text-sm font-medium ${isYearly ? 'text-gray-900' : 'text-gray-500'}`}>
                 Yearly
               </span>
               {isYearly && (

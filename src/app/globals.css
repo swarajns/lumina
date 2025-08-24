@@ -1,63 +1,178 @@
 @import "tailwindcss";
 
-/* Custom color variables for Tailwind 4+ */
-@theme {
-  --color-primary-50: #f0f9ff;
-  --color-primary-100: #e0f2fe;
-  --color-primary-500: #0ea5e9;
-  --color-primary-600: #0284c7;
-  --color-primary-700: #0369a1;
-  
-  --color-gray-50: #f9fafb;
-  --color-gray-100: #f3f4f6;
-  --color-gray-200: #e5e7eb;
-  --color-gray-300: #d1d5db;
-  --color-gray-400: #9ca3af;
-  --color-gray-500: #6b7280;
-  --color-gray-600: #4b5563;
-  --color-gray-700: #374151;
-  --color-gray-800: #1f2937;
-  --color-gray-900: #111827;
-  
-  --shadow-soft: 0 2px 15px -3px rgba(0, 0, 0, 0.07), 0 10px 20px -2px rgba(0, 0, 0, 0.04);
-  --shadow-glass: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
+/* Clean white background - enforced globally */
+html, body {
+  margin: 0;
+  padding: 0;
+  min-height: 100vh;
+  background-color: #ffffff !important;
+  color: #000000;
+  font-family: 'Inter', system-ui, sans-serif;
 }
 
-/* Base styles */
-* {
-  box-sizing: border-box;
+/* Remove any grey backgrounds from common containers */
+#__next,
+.min-h-screen,
+main,
+.container,
+[class*="bg-gray"] {
+  background-color: #ffffff !important;
 }
 
-body {
-  font-family: system-ui, -apple-system, sans-serif;
-  line-height: 1.6;
-  color: #111827;
-  background: linear-gradient(135deg, #f9fafb 0%, #ffffff 100%);
+/* Override Tailwind's grey backgrounds globally */
+.bg-gray-50 {
+  background-color: #ffffff !important;
+}
+
+.bg-gray-100 {
+  background-color: #ffffff !important;
+}
+
+/* Keep gradient backgrounds but ensure they end in white */
+.bg-gradient-to-br {
+  background: linear-gradient(to bottom right, #ffffff, #ffffff) !important;
+}
+
+/* CUSTOM GLASSMORPHISM EFFECTS (Keep these in CSS for consistency) */
+.glass {
+  background: rgba(0, 0, 0, 0.03);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.08);
+}
+
+.glass-card {
+  background: rgba(0, 0, 0, 0.02);
+  backdrop-filter: blur(15px);
+  -webkit-backdrop-filter: blur(15px);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.06);
+  border-radius: 16px;
+}
+
+.glass-button {
+  background: rgba(0, 0, 0, 0.04);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  transition: all 0.3s ease;
+}
+
+.glass-button:hover {
+  background: rgba(0, 0, 0, 0.08);
+  transform: translateY(-2px);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.12);
+}
+
+.glass-nav {
+  background: rgba(255, 255, 255, 0.9);
+  backdrop-filter: blur(25px);
+  -webkit-backdrop-filter: blur(25px);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+.glass-sidebar {
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(30px);
+  -webkit-backdrop-filter: blur(30px);
+  border-right: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+/* Gradient cards - enhanced for white background */
+.gradient-card {
+  background: linear-gradient(145deg, rgba(0, 0, 0, 0.02), rgba(0, 0, 0, 0.01));
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  position: relative;
+  overflow: hidden;
+}
+
+.gradient-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(0, 0, 0, 0.03), transparent);
+  transition: left 0.5s ease;
+}
+
+.gradient-card:hover::before {
+  left: 100%;
+}
+
+/* Custom scrollbar for white background */
+::-webkit-scrollbar {
+  width: 8px;
+}
+::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.02);
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.3);
+}
+
+/* CUSTOM SWITCH TOGGLE COLORS - Red when off, Green when on */
+.switch-toggle[data-state="unchecked"] {
+  background-color: rgb(239 68 68 / 0.2) !important;
+  border-color: rgb(239 68 68 / 0.3) !important;
+}
+
+.switch-toggle[data-state="unchecked"] > span {
+  background-color: rgb(239 68 68) !important;
+}
+
+.switch-toggle[data-state="checked"] {
+  background-color: rgb(34 197 94 / 0.2) !important;
+  border-color: rgb(34 197 94 / 0.3) !important;
+}
+
+.switch-toggle[data-state="checked"] > span {
+  background-color: rgb(34 197 94) !important;
+}
+
+/* Hover effects for toggles */
+.switch-toggle:hover[data-state="unchecked"] {
+  background-color: rgb(239 68 68 / 0.3) !important;
+}
+
+.switch-toggle:hover[data-state="checked"] {
+  background-color: rgb(34 197 94 / 0.3) !important;
+}
+
+/* Enhanced toggle with smooth transitions */
+.switch-toggle {
+  transition: all 0.3s ease !important;
+}
+
+.switch-toggle > span {
+  transition: all 0.3s ease !important;
+}
+
+/* Optional: Add glow effects for premium look */
+.switch-toggle[data-state="checked"] {
+  box-shadow: 0 0 10px rgb(34 197 94 / 0.3) !important;
+}
+
+.switch-toggle[data-state="unchecked"]:hover {
+  box-shadow: 0 0 8px rgb(239 68 68 / 0.2) !important;
+}
+
+/* Additional utility classes for consistent white backgrounds */
+.page-container {
+  background-color: #ffffff;
   min-height: 100vh;
 }
 
-/* Custom scrollbar */
-::-webkit-scrollbar {
-  width: 6px;
-}
-
-::-webkit-scrollbar-track {
-  background: #f1f5f9;
-  border-radius: 10px;
-}
-
-::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
-  border-radius: 10px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
-}
-
-/* Glass morphism utilities */
-.glass {
-  background: rgba(255, 255, 255, 0.25);
-  backdrop-filter: blur(10px);
-  border: 1px solid rgba(255, 255, 255, 0.18);
+/* Ensure cards and components stay white */
+.card,
+.glass-card,
+[data-component="card"] {
+  background-color: rgba(255, 255, 255, 0.95);
 }

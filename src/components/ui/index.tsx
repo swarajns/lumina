@@ -1,0 +1,21 @@
+// src/components/ui/index.tsx
+
+// Fix: Use named exports instead of default exports
+export { Button } from './button'
+export { Card, CardContent, CardHeader, CardTitle } from './card'
+export { Badge } from './badge'
+export { Input } from './input'
+export { Tabs, TabsContent, TabsList, TabsTrigger } from './tabs'
+export { Progress } from './progress'
+export { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from './dialog'
+export { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './select'
+export { Switch } from './switch'
+export { Textarea } from './textarea'
+export { Label } from './label'
+export { Separator } from './separator'
+export { Avatar } from './avatar'
+export { Checkbox } from './checkbox'
+export { Slider } from './slider'
+export { ScrollArea } from './scroll-area'
+export { Table } from './table'
+export { DropdownMenu } from './dropdown-menu'

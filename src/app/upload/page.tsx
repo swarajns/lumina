@@ -2,12 +2,12 @@
 
 import React, { useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import { Button } from '@/components/ui/Button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
-import UpgradePrompt from '@/components/UpgradePrompt'
-import { useSubscriptionLimits } from '@/hooks/useSubscriptionLimits'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { useSubscription } from '@/context/SubscriptionContext'
+import { supabase } from '@/lib/supabase'
 import AIResults from '@/components/AIResults'
-import { Upload, FileAudio, FileVideo, X, Check, Edit3, Crown, Zap, Clock, Users } from 'lucide-react'
+import { Upload, FileAudio, FileVideo, X, Check, Edit3, Crown, Zap, Clock, Users, AlertCircle } from 'lucide-react'
 import { analyzeAudio } from '@/lib/gemini'
 import { formatFileSize } from '@/lib/utils'
 import type { AIAnalysis } from '@/types'
@@ -21,12 +21,87 @@ interface UploadedFile {
 
 export default function UploadPage() {
   const router = useRouter()
-  const { limits, loading } = useSubscriptionLimits()
+  const { subscription, loading: subscriptionLoading } = useSubscription()
   const [uploadedFile, setUploadedFile] = useState<UploadedFile | null>(null)
   const [meetingTitle, setMeetingTitle] = useState('')
   const [analysis, setAnalysis] = useState<AIAnalysis | null>(null)
   const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [dragActive, setDragActive] = useState(false)
+  const [user, setUser] = useState<any>(null)
+  const [meetingsCount, setMeetingsCount] = useState(0)
+  const [meetingsLoading, setMeetingsLoading] = useState(true)
+
+  // Get user and meetings count
+  React.useEffect(() => {
+    async function fetchUserAndMeetings() {
+      try {
+        const { data: { user } } = await supabase.auth.getUser()
+        if (!user) {
+          router.push('/login')
+          return
+        }
+        setUser(user)
+
+        // Get current month's meetings count with better error handling
+        const thisMonthStart = new Date()
+        thisMonthStart.setDate(1)
+        thisMonthStart.setHours(0, 0, 0, 0)
+
+        // Try to fetch meetings, but continue if table doesn't exist
+        try {
+          const { data: meetings, error } = await supabase
+            .from('meetings')
+            .select('id, created_at')
+            .eq('user_id', user.id)
+            .gte('created_at', thisMonthStart.toISOString())
+
+          if (error) {
+            console.warn('Unable to fetch meetings count:', error.message)
+            setMeetingsCount(0)
+          } else {
+            setMeetingsCount(meetings?.length || 0)
+          }
+        } catch (meetingError) {
+          console.warn('Meetings table not accessible, defaulting to 0:', meetingError)
+          setMeetingsCount(0)
+        }
+      } catch (error) {
+        console.error('Error fetching user:', error)
+        setMeetingsCount(0)
+      } finally {
+        setMeetingsLoading(false)
+      }
+    }
+
+    fetchUserAndMeetings()
+  }, [router])
+
+  // Calculate subscription limits
+  const getSubscriptionLimits = () => {
+    const planName = subscription?.planName || 'Free'
+    const maxMeetings = subscription?.maxMeetings || 3
+    const currentMeetings = meetingsCount
+    const isAtLimit = currentMeetings >= maxMeetings && planName === 'Free'
+    const isNearLimit = currentMeetings >= maxMeetings * 0.8 && planName === 'Free'
+    
+    return {
+      planName,
+      maxMeetings,
+      currentMeetings,
+      canRecord: !isAtLimit,
+      canUpload: !isAtLimit,
+      isAtLimit,
+      isNearLimit,
+      upgradeReason: isAtLimit 
+        ? `You've used all ${maxMeetings} meetings this month`
+        : isNearLimit 
+        ? `You're approaching your ${maxMeetings} meeting limit`
+        : null
+    }
+  }
+
+  const limits = getSubscriptionLimits()
+  const loading = subscriptionLoading || meetingsLoading
 
   const handleFiles = useCallback(async (files: FileList | null) => {
     if (!files || files.length === 0) return
@@ -183,7 +258,10 @@ export default function UploadPage() {
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-50 to-white flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading subscription data...</p>
+        </div>
       </div>
     )
   }
@@ -194,22 +272,36 @@ export default function UploadPage() {
       <div className="min-h-screen bg-gradient-to-br from-gray-50 to-white">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
           <div className="text-center mb-8">
+            <AlertCircle className="h-16 w-16 text-red-600 mx-auto mb-4" />
             <h1 className="text-3xl font-bold text-gray-900 mb-4">
               Upload Limit Reached
             </h1>
             <p className="text-gray-600">
-              You've used all your meetings for this month. Upgrade to continue uploading.
+              You've used all {limits.maxMeetings} meetings for this month. Upgrade to continue uploading.
             </p>
           </div>
 
-          <UpgradePrompt
-            title="Upgrade to Continue Uploading"
-            description="Get unlimited uploads, AI analysis, and export features with our Pro plan."
-            reason={limits.upgradeReason || undefined}
-            ctaText="Upgrade to Pro"
-            variant="blocking"
-            className="max-w-2xl mx-auto"
-          />
+          {/* Upgrade Prompt Card */}
+          <Card className="max-w-2xl mx-auto border-red-200 bg-red-50">
+            <CardHeader className="text-center">
+              <CardTitle className="text-red-800">
+                Upgrade to Continue Uploading
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="text-center space-y-4">
+              <p className="text-red-700">
+                Get unlimited uploads, AI analysis, and export features with our Pro plan.
+              </p>
+              <Button 
+                onClick={() => router.push('/pricing')}
+                className="bg-red-600 hover:bg-red-700 w-full"
+                size="lg"
+              >
+                <Crown className="h-5 w-5 mr-2" />
+                Upgrade to Pro
+              </Button>
+            </CardContent>
+          </Card>
 
           {/* Pro features preview */}
           <div className="mt-12 max-w-2xl mx-auto">
@@ -266,13 +358,25 @@ export default function UploadPage() {
         {/* Near limit warning */}
         {limits.isNearLimit && !limits.isAtLimit && (
           <div className="mb-8">
-            <UpgradePrompt
-              title="Approaching Your Limit"
-              description="You're running low on meetings this month. Upgrade to Pro for unlimited uploads."
-              reason={limits.upgradeReason || undefined}
-              variant="warning"
-              className="max-w-2xl mx-auto"
-            />
+            <Card className="max-w-2xl mx-auto border-orange-200 bg-orange-50">
+              <CardContent className="p-6 text-center">
+                <div className="flex items-center justify-center gap-2 mb-2">
+                  <AlertCircle className="h-5 w-5 text-orange-600" />
+                  <span className="font-semibold text-orange-800">Approaching Your Limit</span>
+                </div>
+                <p className="text-orange-700 mb-4">
+                  You're running low on meetings this month. Upgrade to Pro for unlimited uploads.
+                </p>
+                <Button 
+                  onClick={() => router.push('/pricing')}
+                  variant="outline"
+                  className="border-orange-300 text-orange-700 hover:bg-orange-100"
+                >
+                  <Crown className="h-4 w-4 mr-2" />
+                  View Plans
+                </Button>
+              </CardContent>
+            </Card>
           </div>
         )}
 
