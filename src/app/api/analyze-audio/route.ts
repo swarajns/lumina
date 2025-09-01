@@ -4,6 +4,59 @@ import { supabase } from '@/lib/supabase'
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!)
 
+// TypeScript interfaces
+interface ActionItem {
+  text: string
+  priority: 'high' | 'medium' | 'low'
+}
+
+interface AnalysisResult {
+  transcript: string
+  summary: string
+  actionItems: ActionItem[]
+  keyPoints: string[]
+}
+
+interface Meeting {
+  id: string
+  title: string
+  duration: number
+  file_url: string
+  file_size: number
+  mime_type: string
+  transcript: string
+  summary: string
+  source: string
+  created_at?: string
+}
+
+interface FinalAnalysisResponse {
+  meetingId: string
+  transcript: string
+  summary: string
+  actionItems: Array<{
+    id: string
+    text: string
+    completed: boolean
+    priority: 'high' | 'medium' | 'low'
+  }>
+  keyPoints: string[]
+  fileUrl: string
+}
+
+interface ErrorResponse {
+  transcript: string
+  summary: string
+  actionItems: Array<{
+    id: string
+    text: string
+    completed: boolean
+    priority: 'high' | 'medium' | 'low'
+  }>
+  keyPoints: string[]
+  error: string
+}
+
 // Helper function to clean text without problematic regex
 function cleanResponseText(text: string): string {
   let cleaned = text.trim()
@@ -39,15 +92,15 @@ function cleanResponseText(text: string): string {
   return cleaned
 }
 
-export async function POST(request: NextRequest) {
+export async function POST(request: NextRequest): Promise<NextResponse<FinalAnalysisResponse | ErrorResponse>> {
   try {
     console.log('🎙️ Starting audio analysis...')
 
     const formData = await request.formData()
     const audioFile = formData.get('audio') as File
-    const title = formData.get('title') as string || 'Untitled Meeting'
-    const duration = parseInt(formData.get('duration') as string || '0')
-    const source = formData.get('source') as string || 'record'
+    const title = (formData.get('title') as string) || 'Untitled Meeting'
+    const duration = parseInt((formData.get('duration') as string) || '0')
+    const source = (formData.get('source') as string) || 'record'
 
     if (!audioFile) {
       return NextResponse.json({ error: 'No audio file provided' }, { status: 400 })
@@ -78,11 +131,11 @@ export async function POST(request: NextRequest) {
     console.log('✅ File uploaded to:', publicUrl)
 
     // Step 2: AI Analysis with Better Prompting
-    let analysis = {
+    let analysis: AnalysisResult = {
       transcript: '',
       summary: '',
-      actionItems: [] as any[],
-      keyPoints: [] as string[]
+      actionItems: [],
+      keyPoints: []
     }
 
     try {
@@ -153,7 +206,15 @@ Respond with ONLY the JSON object, no additional text.`
         console.log('🧹 Cleaned text for parsing:')
         console.log(cleanedText.substring(0, 200) + '...')
 
-        analysis = JSON.parse(cleanedText)
+        const parsedAnalysis = JSON.parse(cleanedText) as AnalysisResult
+        
+        // Validate and ensure proper structure
+        analysis = {
+          transcript: parsedAnalysis.transcript || '',
+          summary: parsedAnalysis.summary || '',
+          actionItems: Array.isArray(parsedAnalysis.actionItems) ? parsedAnalysis.actionItems : [],
+          keyPoints: Array.isArray(parsedAnalysis.keyPoints) ? parsedAnalysis.keyPoints : []
+        }
         
         console.log('✅ Successfully parsed JSON')
         console.log('Transcript length:', analysis.transcript?.length || 0)
@@ -229,9 +290,9 @@ Respond with ONLY the JSON object, no additional text.`
         source: source
       })
       .select()
-      .single()
+      .single() as { data: Meeting | null; error: unknown }
 
-    if (meetingError) {
+    if (meetingError || !meeting) {
       console.error('❌ Failed to save meeting:', meetingError)
       throw new Error('Database insert failed')
     }
@@ -244,15 +305,11 @@ Respond with ONLY the JSON object, no additional text.`
     if (analysis.actionItems && Array.isArray(analysis.actionItems) && analysis.actionItems.length > 0) {
       console.log(`Found ${analysis.actionItems.length} action items to save`)
       
-      const actionItemsData = analysis.actionItems.map((item: any, index: number) => {
-        const actionItem = {
-          meeting_id: meeting.id,
-          text: item.text || item || `Action item ${index + 1}`,
-          priority: item.priority || 'medium'
-        }
-        console.log(`  Action item ${index + 1}:`, actionItem)
-        return actionItem
-      })
+      const actionItemsData = analysis.actionItems.map((item: ActionItem, index: number) => ({
+        meeting_id: meeting.id,
+        text: item.text || `Action item ${index + 1}`,
+        priority: item.priority || 'medium' as const
+      }))
 
       console.log('💾 Inserting action items into database...')
       const { data: insertedActionItems, error: actionItemsError } = await supabase
@@ -272,7 +329,7 @@ Respond with ONLY the JSON object, no additional text.`
       const defaultActionItem = {
         meeting_id: meeting.id,
         text: 'Review meeting content and extract action items',
-        priority: 'medium'
+        priority: 'medium' as const
       }
       
       const { error: defaultActionError } = await supabase
@@ -308,15 +365,15 @@ Respond with ONLY the JSON object, no additional text.`
     }
 
     // Step 6: Return final response
-    const finalAnalysis = {
+    const finalAnalysis: FinalAnalysisResponse = {
       meetingId: meeting.id,
       transcript: analysis.transcript,
       summary: analysis.summary,
-      actionItems: analysis.actionItems.map((item: any, index: number) => ({
+      actionItems: analysis.actionItems.map((item: ActionItem, index: number) => ({
         id: `action-${timestamp}-${index}`,
-        text: item.text || item,
+        text: item.text,
         completed: false,
-        priority: item.priority || 'medium'
+        priority: item.priority
       })),
       keyPoints: analysis.keyPoints || [],
       fileUrl: publicUrl
@@ -327,11 +384,12 @@ Respond with ONLY the JSON object, no additional text.`
     
     return NextResponse.json(finalAnalysis)
 
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred'
     console.error('💥 Complete failure:', error)
     
-    return NextResponse.json({
-      transcript: `Error: ${error.message}`,
+    const errorResponse: ErrorResponse = {
+      transcript: `Error: ${errorMessage}`,
       summary: 'Processing failed completely.',
       actionItems: [{
         id: `error-${Date.now()}`,
@@ -340,7 +398,9 @@ Respond with ONLY the JSON object, no additional text.`
         priority: 'high'
       }],
       keyPoints: ['Processing failed', 'Check logs'],
-      error: error.message
-    }, { status: 500 })
+      error: errorMessage
+    }
+    
+    return NextResponse.json(errorResponse, { status: 500 })
   }
 }

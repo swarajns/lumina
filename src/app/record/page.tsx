@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -12,9 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Progress } from "@/components/ui/progress"
 import { 
   Mic,
-  MicOff,
   Video,
-  VideoOff,
   Play,
   Pause,
   Square,
@@ -22,85 +20,155 @@ import {
   Clock,
   Brain,
   Volume2,
-  Save,
   Trash2,
   User,
   FileText,
-  Zap,
   CheckSquare,
   AlertTriangle,
   Monitor,
   Camera,
   Settings,
-  Link,
   Bot,
-  ExternalLink,
   Globe,
   Wifi,
-  ChevronRight,
   Upload,
-  Download,
   Cloud,
   X,
   CheckCircle,
-  Loader
+  Loader,
+  Download,
+  Activity,
+  Zap
 } from "lucide-react"
 import { toast } from 'sonner'
 import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 
+// TypeScript Interfaces
+interface User {
+  id: string
+  email?: string
+}
+
+interface Participant {
+  id: string
+  name: string
+  email?: string
+}
+
+interface ExtractedTask {
+  id: number
+  text: string
+  assignee: string
+  dueDate: string
+  priority: 'Low' | 'Medium' | 'High'
+  completed?: boolean
+}
+
+interface MeetingInfo {
+  platform: string
+  meetingId?: string
+  roomCode?: string
+  threadId?: string
+  password?: string
+  title: string
+}
+
+interface Meeting {
+  id: string
+  title: string
+  description?: string
+  recording_mode: string
+  meeting_url?: string
+  meeting_platform?: string
+  participants: string[]
+  ai_settings: {
+    task_extraction: boolean
+    speaker_identification: boolean
+    auto_summary: boolean
+  }
+  status: string
+  created_at: string
+}
+
+// NEW: Bot Session Interface
+interface BotSession {
+  id: string
+  meetingId: string
+  meetingTitle: string
+  platform: string
+  url: string
+  joinTime: Date
+  status: 'joining' | 'connected' | 'recording' | 'completed' | 'failed'
+  transcript?: string
+  tasks?: ExtractedTask[]
+}
+
+type RecordingMode = 'audio' | 'video' | 'screen' | 'meeting-bot'
+type BotStatus = 'idle' | 'joining' | 'connected' | 'recording' | 'error'
+type MeetingPlatform = 'zoom' | 'google-meet' | 'teams' | 'unknown'
+type PermissionState = 'granted' | 'denied' | 'prompt'
+type DownloadStatus = 'idle' | 'preparing' | 'ready' | 'downloading' | 'completed' | 'error'
+
 export default function RecordPage() {
   // Recording states
-  const [isRecording, setIsRecording] = useState(false)
-  const [isPaused, setIsPaused] = useState(false)
-  const [recordingTime, setRecordingTime] = useState(0)
-  const [audioLevel, setAudioLevel] = useState(0)
-  const [micPermission, setMicPermission] = useState<'granted' | 'denied' | 'prompt'>('prompt')
-  const [cameraPermission, setCameraPermission] = useState<'granted' | 'denied' | 'prompt'>('prompt')
+  const [isRecording, setIsRecording] = useState<boolean>(false)
+  const [isPaused, setIsPaused] = useState<boolean>(false)
+  const [recordingTime, setRecordingTime] = useState<number>(0)
+  const [audioLevel, setAudioLevel] = useState<number>(0)
+  const [micPermission, setMicPermission] = useState<PermissionState>('prompt')
+  const [cameraPermission, setCameraPermission] = useState<PermissionState>('prompt')
   
-  // 🔥 Upload states
-  const [isUploading, setIsUploading] = useState(false)
-  const [uploadProgress, setUploadProgress] = useState(0)
+  // Upload states
+  const [isUploading, setIsUploading] = useState<boolean>(false)
+  const [uploadProgress, setUploadProgress] = useState<number>(0)
   
-  // 🔥 NEW: Download popup and states
-  const [showDownloadModal, setShowDownloadModal] = useState(false)
-  const [isDownloading, setIsDownloading] = useState(false)
-  const [downloadProgress, setDownloadProgress] = useState(0)
-  const [downloadStatus, setDownloadStatus] = useState<'idle' | 'preparing' | 'ready' | 'downloading' | 'completed' | 'error'>('idle')
+  // Download popup and states
+  const [showDownloadModal, setShowDownloadModal] = useState<boolean>(false)
+  const [isDownloading, setIsDownloading] = useState<boolean>(false)
+  const [downloadProgress, setDownloadProgress] = useState<number>(0)
+  const [downloadStatus, setDownloadStatus] = useState<DownloadStatus>('idle')
   const [recordingBlob, setRecordingBlob] = useState<Blob | null>(null)
   const [recordingFileName, setRecordingFileName] = useState<string>('')
   
   // Recording mode
-  const [recordingMode, setRecordingMode] = useState<'audio' | 'video' | 'screen' | 'meeting-bot'>('meeting-bot')
-  const [isVideoEnabled, setIsVideoEnabled] = useState(true)
-  const [isAudioEnabled, setIsAudioEnabled] = useState(true)
+  const [recordingMode, setRecordingMode] = useState<RecordingMode>('meeting-bot')
+  const [isVideoEnabled, setIsVideoEnabled] = useState<boolean>(true)
+  const [isAudioEnabled, setIsAudioEnabled] = useState<boolean>(true)
   
   // Meeting Bot Integration
-  const [meetingUrl, setMeetingUrl] = useState('')
-  const [meetingPlatform, setMeetingPlatform] = useState<'zoom' | 'google-meet' | 'teams' | 'unknown'>('unknown')
-  const [botStatus, setBotStatus] = useState<'idle' | 'joining' | 'connected' | 'recording' | 'error'>('idle')
-  const [meetingInfo, setMeetingInfo] = useState<any>(null)
+  const [meetingUrl, setMeetingUrl] = useState<string>('')
+  const [meetingPlatform, setMeetingPlatform] = useState<MeetingPlatform>('unknown')
+  const [botStatus, setBotStatus] = useState<BotStatus>('idle')
+  const [meetingInfo, setMeetingInfo] = useState<MeetingInfo | null>(null)
+  
+  // NEW: Enhanced Bot Features
+  const [currentBotSession, setCurrentBotSession] = useState<BotSession | null>(null)
+  const [activeMeetingSessions, setActiveMeetingSessions] = useState<BotSession[]>([])
+  const [autoRecordMeetings, setAutoRecordMeetings] = useState<boolean>(true)
+  const [autoTranscribe, setAutoTranscribe] = useState<boolean>(true)
+  const [joinBeforeMinutes, setJoinBeforeMinutes] = useState<number>(2)
   
   // Meeting metadata
-  const [meetingTitle, setMeetingTitle] = useState('')
-  const [meetingDescription, setMeetingDescription] = useState('')
+  const [meetingTitle, setMeetingTitle] = useState<string>('')
+  const [meetingDescription, setMeetingDescription] = useState<string>('')
   const [participants, setParticipants] = useState<string[]>([''])
   
   // Real-time transcription
-  const [liveTranscript, setLiveTranscript] = useState('')
-  const [isTranscribing, setIsTranscribing] = useState(false)
+  const [liveTranscript, setLiveTranscript] = useState<string>('')
+  const [isTranscribing, setIsTranscribing] = useState<boolean>(false)
   
   // AI features
-  const [aiTaskExtraction, setAiTaskExtraction] = useState(true)
-  const [speakerIdentification, setSpeakerIdentification] = useState(true)
-  const [autoSummary, setAutoSummary] = useState(true)
+  const [aiTaskExtraction, setAiTaskExtraction] = useState<boolean>(true)
+  const [speakerIdentification, setSpeakerIdentification] = useState<boolean>(true)
+  const [autoSummary, setAutoSummary] = useState<boolean>(true)
   
   // Extracted insights
-  const [extractedTasks, setExtractedTasks] = useState<any[]>([])
+  const [extractedTasks, setExtractedTasks] = useState<ExtractedTask[]>([])
   
   // Real integration states
   const [currentMeetingId, setCurrentMeetingId] = useState<string | null>(null)
-  const [user, setUser] = useState<any>(null)
+  const [user, setUser] = useState<User | null>(null)
   const router = useRouter()
   
   // Refs
@@ -111,9 +179,6 @@ export default function RecordPage() {
   const streamRef = useRef<MediaStream | null>(null)
   const videoPreviewRef = useRef<HTMLVideoElement>(null)
   const recordedVideoRef = useRef<HTMLVideoElement>(null)
-  
-  // Canvas and webcam refs for overlay
-  const canvasRef = useRef<HTMLCanvasElement>(null)
   const webcamStreamRef = useRef<MediaStream | null>(null)
   const animationIdRef = useRef<number | null>(null)
 
@@ -121,13 +186,37 @@ export default function RecordPage() {
   useEffect(() => {
     checkPermissions()
     getUser()
+    fetchActiveBotSessions() // NEW: Fetch active bot sessions
   }, [])
 
   // Get user authentication
-  const getUser = async () => {
+  const getUser = useCallback(async () => {
     const { data: { user } } = await supabase.auth.getUser()
     setUser(user)
     console.log('👤 User loaded:', user?.id)
+  }, [])
+
+  // NEW: Fetch active bot sessions
+  const fetchActiveBotSessions = async () => {
+    if (!user) return
+    
+    try {
+      const { data, error } = await supabase
+        .from('meeting_sessions')
+        .select('*')
+        .eq('workspace_id', user.id)
+        .in('status', ['joining', 'connected', 'recording'])
+        .order('join_time', { ascending: false })
+
+      if (error) throw error
+      
+      setActiveMeetingSessions(data?.map(session => ({
+        ...session,
+        joinTime: new Date(session.join_time)
+      })) || [])
+    } catch (error) {
+      console.error('Error fetching bot sessions:', error)
+    }
   }
 
   // Detect meeting platform from URL
@@ -145,22 +234,22 @@ export default function RecordPage() {
         setMeetingTitle(info.title)
       }
     }
-  }, [meetingUrl])
+  }, [meetingUrl, meetingTitle])
 
-  const checkPermissions = async () => {
+  const checkPermissions = async (): Promise<void> => {
     try {
       const micStatus = await navigator.permissions.query({ name: 'microphone' as PermissionName })
-      setMicPermission(micStatus.state as 'granted' | 'denied' | 'prompt')
+      setMicPermission(micStatus.state as PermissionState)
       
       const cameraStatus = await navigator.permissions.query({ name: 'camera' as PermissionName })
-      setCameraPermission(cameraStatus.state as 'granted' | 'denied' | 'prompt')
+      setCameraPermission(cameraStatus.state as PermissionState)
     } catch (error) {
       console.log('Permission API not supported')
     }
   }
 
   // Detect meeting platform from URL
-  const detectMeetingPlatform = (url: string): 'zoom' | 'google-meet' | 'teams' | 'unknown' => {
+  const detectMeetingPlatform = (url: string): MeetingPlatform => {
     if (!url) return 'unknown'
     
     const lowerUrl = url.toLowerCase()
@@ -177,9 +266,9 @@ export default function RecordPage() {
   }
 
   // Extract meeting info from URL
-  const extractMeetingInfo = (url: string, platform: string) => {
+  const extractMeetingInfo = (url: string, platform: string): MeetingInfo | null => {
     if (!url) return null
-
+    
     try {
       const urlObj = new URL(url)
       
@@ -190,7 +279,7 @@ export default function RecordPage() {
           return {
             platform: 'Zoom',
             meetingId,
-            password,
+            password: password || undefined,
             title: meetingId ? `Zoom Meeting ${meetingId}` : 'Zoom Meeting'
           }
           
@@ -206,7 +295,7 @@ export default function RecordPage() {
           const threadId = urlObj.searchParams.get('threadId')
           return {
             platform: 'Microsoft Teams',
-            threadId,
+            threadId: threadId || undefined,
             title: 'Microsoft Teams Meeting'
           }
           
@@ -241,7 +330,7 @@ export default function RecordPage() {
     }
   }, [isRecording, isPaused])
 
-  const formatTime = (seconds: number) => {
+  const formatTime = (seconds: number): string => {
     const hrs = Math.floor(seconds / 3600)
     const mins = Math.floor((seconds % 3600) / 60)
     const secs = seconds % 60
@@ -253,7 +342,7 @@ export default function RecordPage() {
   }
 
   // Create meeting record in database
-  const createMeetingRecord = async () => {
+  const createMeetingRecord = async (): Promise<string> => {
     if (!user) {
       throw new Error('User not authenticated - please sign in first')
     }
@@ -281,22 +370,23 @@ export default function RecordPage() {
           created_at: new Date().toISOString()
         })
         .select()
-        .single()
+        .single() as { data: Meeting | null; error: unknown }
 
       if (meetingError) throw meetingError
+      if (!meetingData) throw new Error('No meeting data returned')
 
       console.log('✅ Meeting created successfully:', meetingData.id)
       setCurrentMeetingId(meetingData.id)
       return meetingData.id
 
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('❌ Failed to create meeting:', error)
       throw error
     }
   }
 
   // Handle transcription with actual API
-  const handleRealTranscription = async (audioBlob: Blob) => {
+  const handleRealTranscription = async (audioBlob: Blob): Promise<void> => {
     if (!currentMeetingId || !user) return
 
     try {
@@ -319,7 +409,7 @@ export default function RecordPage() {
           
           // Extract tasks from transcript
           if (randomTranscript.includes('follow up') || randomTranscript.includes('prepare')) {
-            const newTask = {
+            const newTask: ExtractedTask = {
               id: Date.now(),
               text: randomTranscript,
               assignee: randomTranscript.includes('Sarah') ? 'Sarah' : 'John',
@@ -338,7 +428,7 @@ export default function RecordPage() {
   }
 
   // Upload recording with comprehensive error handling
-  const uploadRecording = async (blob: Blob, meetingId: string) => {
+  const uploadRecording = async (blob: Blob, meetingId: string): Promise<string> => {
     try {
       setIsUploading(true)
       setUploadProgress(10)
@@ -393,9 +483,10 @@ export default function RecordPage() {
       
       return uploadData.path
       
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
       console.error('❌ Failed to upload recording:', error)
-      toast.error('Failed to save to cloud: ' + error.message)
+      toast.error('Failed to save to cloud: ' + errorMessage)
       throw error
     } finally {
       setTimeout(() => {
@@ -405,8 +496,8 @@ export default function RecordPage() {
     }
   }
 
-  // 🔥 NEW: Handle download preparation and download
-  const handleDownload = async () => {
+  // Handle download preparation and download
+  const handleDownload = async (): Promise<void> => {
     if (!recordingBlob) {
       toast.error('No recording available for download')
       return
@@ -457,17 +548,18 @@ export default function RecordPage() {
         resetDownloadState()
       }, 2000)
       
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
       console.error('❌ Download failed:', error)
       setDownloadStatus('error')
-      toast.error('Download failed: ' + error.message)
+      toast.error('Download failed: ' + errorMessage)
     } finally {
       setIsDownloading(false)
     }
   }
 
-  // 🔥 NEW: Reset download state
-  const resetDownloadState = () => {
+  // Reset download state
+  const resetDownloadState = (): void => {
     setDownloadStatus('idle')
     setDownloadProgress(0)
     setIsDownloading(false)
@@ -475,8 +567,8 @@ export default function RecordPage() {
     setRecordingFileName('')
   }
 
-  // 🔥 UPDATED: Handle download modal close with background upload
-  const handleDownloadModalClose = () => {
+  // Handle download modal close with background upload
+  const handleDownloadModalClose = (): void => {
     if (isUploading) {
       toast.info('Upload continues in background')
     }
@@ -484,8 +576,8 @@ export default function RecordPage() {
     resetDownloadState()
   }
 
-  // Join meeting and start recording
-  const joinMeetingAndRecord = async () => {
+  // NEW: Enhanced Meeting Bot Functions
+  const joinMeetingAndRecord = async (): Promise<void> => {
     if (!meetingUrl) {
       toast.error('Please enter a meeting URL')
       return
@@ -503,7 +595,29 @@ export default function RecordPage() {
       // Create meeting record first
       const meetingId = await createMeetingRecord()
       
-      // Simulate bot joining process
+      // Call meeting bot API
+      const response = await fetch('/api/meeting-bot/join', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          meetingUrl,
+          meetingId,
+          platform: meetingPlatform,
+          settings: {
+            recordAudio: autoRecordMeetings,
+            transcribeAudio: autoTranscribe,
+            extractTasks: aiTaskExtraction,
+            identifySpeakers: speakerIdentification
+          }
+        })
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to join meeting')
+      }
+
+      const { sessionId } = await response.json()
+      
       toast.success('Bot is joining the meeting...')
       
       // Simulate joining delay
@@ -518,20 +632,63 @@ export default function RecordPage() {
       setIsRecording(true)
       setIsTranscribing(true)
       
+      // Create bot session
+      const botSession: BotSession = {
+        id: sessionId,
+        meetingId,
+        meetingTitle: meetingTitle || 'Bot Recording',
+        platform: meetingPlatform,
+        url: meetingUrl,
+        joinTime: new Date(),
+        status: 'recording'
+      }
+      
+      setCurrentBotSession(botSession)
       toast.success('Recording started!')
       
       // Simulate live transcription updates
       simulateLiveTranscription()
       
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
       console.error('❌ Failed to join meeting:', error)
       setBotStatus('error')
-      toast.error(`Failed to join meeting: ${error.message}`)
+      toast.error(`Failed to join meeting: ${errorMessage}`)
+    }
+  }
+
+  // NEW: Leave meeting bot
+  const leaveMeetingBot = async (): Promise<void> => {
+    try {
+      setBotStatus('idle')
+      setIsRecording(false)
+      setIsTranscribing(false)
+      
+      if (currentBotSession) {
+        // Call API to leave meeting
+        await fetch('/api/meeting-bot/leave', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            sessionId: currentBotSession.id
+          })
+        })
+      }
+      
+      setCurrentBotSession(null)
+      toast.success('Left meeting and stopped recording')
+      
+      // Refresh sessions
+      await fetchActiveBotSessions()
+      
+    } catch (error) {
+      console.error('Error leaving meeting:', error)
+      toast.error('Error leaving meeting')
     }
   }
 
   // Simulate live transcription
-  const simulateLiveTranscription = () => {
+  const simulateLiveTranscription = (): void => {
     const sampleTranscripts = [
       "Welcome everyone to today's meeting. Let's start with our agenda items.",
       "John, can you give us an update on the project status?",
@@ -546,14 +703,14 @@ export default function RecordPage() {
     ]
     
     let transcriptIndex = 0
-    const addTranscript = () => {
+    const addTranscript = (): void => {
       if (isRecording && transcriptIndex < sampleTranscripts.length) {
         const newText = sampleTranscripts[transcriptIndex]
         setLiveTranscript(prev => prev + (prev ? ' ' : '') + newText)
         
         // Real task extraction
         if (newText.includes('follow up') || newText.includes('prepare') || newText.includes('schedule')) {
-          const newTask = {
+          const newTask: ExtractedTask = {
             id: Date.now(),
             text: newText,
             assignee: newText.includes('Sarah') ? 'Sarah' : newText.includes('Mike') ? 'Mike' : 'Team',
@@ -573,7 +730,7 @@ export default function RecordPage() {
   }
 
   // Start local recording with webcam overlay
-  const startRecording = async () => {
+  const startRecording = async (): Promise<void> => {
     try {
       console.log('🎥 Starting local recording with mode:', recordingMode)
       
@@ -592,7 +749,7 @@ export default function RecordPage() {
       
       await new Promise(resolve => setTimeout(resolve, 100))
       
-      let constraints: any = {}
+      let constraints: MediaStreamConstraints = {}
       
       if (recordingMode === 'audio') {
         constraints = { audio: isAudioEnabled }
@@ -616,7 +773,7 @@ export default function RecordPage() {
           audio: true
         })
         
-        // 🔥 Handle webcam overlay with continuous drawing
+        // Handle webcam overlay with continuous drawing
         if (isVideoEnabled) {
           try {
             const webcamStream = await navigator.mediaDevices.getUserMedia({
@@ -649,14 +806,14 @@ export default function RecordPage() {
             
             // Wait for both videos to be ready
             await Promise.all([
-              new Promise((resolve) => {
+              new Promise<void>((resolve) => {
                 screenVideo.onloadedmetadata = () => {
-                  screenVideo.play().then(resolve)
+                  screenVideo.play().then(() => resolve())
                 }
               }),
-              new Promise((resolve) => {
+              new Promise<void>((resolve) => {
                 webcamVideo.onloadedmetadata = () => {
-                  webcamVideo.play().then(resolve)
+                  webcamVideo.play().then(() => resolve())
                 }
               })
             ])
@@ -665,7 +822,7 @@ export default function RecordPage() {
             
             // Independent drawing loop that runs continuously
             let isDrawing = true
-            const combineStreams = () => {
+            const combineStreams = (): void => {
               if (!isDrawing) return
               
               if (screenVideo.readyState >= 2 && webcamVideo.readyState >= 2) {
@@ -710,7 +867,7 @@ export default function RecordPage() {
             console.log('✅ Screen + Webcam overlay combined successfully')
             
             // Store cleanup function
-            ;(streamRef.current as any).cleanup = () => {
+            ;(streamRef.current as MediaStream & { cleanup?: () => void }).cleanup = () => {
               isDrawing = false
               if (animationIdRef.current) {
                 cancelAnimationFrame(animationIdRef.current)
@@ -750,7 +907,7 @@ export default function RecordPage() {
         
         if (audioTracks.length > 0) {
           try {
-            const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext
+            const AudioContextClass = window.AudioContext || (window as Window & { webkitAudioContext: typeof AudioContext }).webkitAudioContext
             audioContextRef.current = new AudioContextClass()
             await audioContextRef.current.resume()
             
@@ -770,7 +927,7 @@ export default function RecordPage() {
       }
       
       // Proper MediaRecorder options with fallbacks
-      const options: any = {}
+      const options: MediaRecorderOptions = {}
       if (recordingMode === 'video' || recordingMode === 'screen') {
         if (MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus')) {
           options.mimeType = 'video/webm;codecs=vp9,opus'
@@ -791,7 +948,7 @@ export default function RecordPage() {
       const mediaRecorder = new MediaRecorder(streamRef.current!, options)
       mediaRecorderRef.current = mediaRecorder
       
-      let chunks: Blob[] = []
+      const chunks: Blob[] = []
       
       mediaRecorder.ondataavailable = (event) => {
         if (event.data.size > 0) {
@@ -810,8 +967,8 @@ export default function RecordPage() {
         console.log('🎬 Recording stopped, processing...')
         
         // Cleanup canvas animation if it exists
-        if ((streamRef.current as any)?.cleanup) {
-          (streamRef.current as any).cleanup()
+        if ((streamRef.current as MediaStream & { cleanup?: () => void })?.cleanup) {
+          ;(streamRef.current as MediaStream & { cleanup?: () => void }).cleanup!()
         }
         
         try {
@@ -845,14 +1002,16 @@ export default function RecordPage() {
               router.push('/meetings')
             }, 2000)
             
-          } catch (uploadError: any) {
+          } catch (uploadError: unknown) {
+            const errorMessage = uploadError instanceof Error ? uploadError.message : 'Unknown error'
             console.error('❌ Failed to upload recording:', uploadError)
             toast.error('Failed to save to cloud, but you can still download locally')
           }
           
-        } catch (error: any) {
+        } catch (error: unknown) {
+          const errorMessage = error instanceof Error ? error.message : 'Unknown error'
           console.error('❌ Failed to process recording:', error)
-          toast.error('Recording failed: ' + error.message)
+          toast.error('Recording failed: ' + errorMessage)
         }
       }
       
@@ -883,9 +1042,10 @@ export default function RecordPage() {
         toast.success(`${recordingMode.charAt(0).toUpperCase() + recordingMode.slice(1)} recording started!`)
       }
       
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
       console.error('❌ Recording error:', error)
-      toast.error(`Recording failed: ${error.message}`)
+      toast.error(`Recording failed: ${errorMessage}`)
       
       // Cleanup on error
       if (streamRef.current) {
@@ -902,7 +1062,7 @@ export default function RecordPage() {
     }
   }
 
-  const monitorAudioLevel = () => {
+  const monitorAudioLevel = (): void => {
     if (analyserRef.current) {
       const dataArray = new Uint8Array(analyserRef.current.frequencyBinCount)
       analyserRef.current.getByteFrequencyData(dataArray)
@@ -916,10 +1076,9 @@ export default function RecordPage() {
     }
   }
 
-  const stopRecording = () => {
+  const stopRecording = (): void => {
     if (recordingMode === 'meeting-bot') {
-      setBotStatus('idle')
-      toast.success('Left meeting and stopped recording')
+      leaveMeetingBot()
     } else {
       if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
         mediaRecorderRef.current.stop()
@@ -944,19 +1103,19 @@ export default function RecordPage() {
         cancelAnimationFrame(animationIdRef.current)
         animationIdRef.current = null
       }
+      
+      if (audioContextRef.current) {
+        audioContextRef.current.close()
+      }
+      
+      setIsRecording(false)
+      setIsPaused(false)
+      setIsTranscribing(false)
+      setAudioLevel(0)
     }
-    
-    if (audioContextRef.current) {
-      audioContextRef.current.close()
-    }
-    
-    setIsRecording(false)
-    setIsPaused(false)
-    setIsTranscribing(false)
-    setAudioLevel(0)
   }
 
-  const togglePause = () => {
+  const togglePause = (): void => {
     if (recordingMode === 'meeting-bot') {
       if (isPaused) {
         setBotStatus('recording')
@@ -983,7 +1142,7 @@ export default function RecordPage() {
   }
 
   // Helper functions
-  const getPlatformIcon = (platform: string) => {
+  const getPlatformIcon = (platform: string): string => {
     switch (platform) {
       case 'zoom': return '🔵'
       case 'google-meet': return '🟢'
@@ -992,7 +1151,7 @@ export default function RecordPage() {
     }
   }
 
-  const getBotStatusColor = (status: string) => {
+  const getBotStatusColor = (status: string): string => {
     switch (status) {
       case 'idle': return 'bg-gray-500/20 text-gray-700'
       case 'joining': return 'bg-blue-500/20 text-blue-700 animate-pulse'
@@ -1003,13 +1162,13 @@ export default function RecordPage() {
     }
   }
 
-  const addParticipant = () => setParticipants([...participants, ''])
-  const updateParticipant = (index: number, value: string) => {
+  const addParticipant = (): void => setParticipants([...participants, ''])
+  const updateParticipant = (index: number, value: string): void => {
     const updated = [...participants]
     updated[index] = value
     setParticipants(updated)
   }
-  const removeParticipant = (index: number) => {
+  const removeParticipant = (index: number): void => {
     if (participants.length > 1) {
       setParticipants(participants.filter((_, i) => i !== index))
     }
@@ -1225,12 +1384,18 @@ export default function RecordPage() {
         {/* LEFT SIDE: Meeting Setup & Recording Mode */}
         <div className="lg:col-span-1 space-y-6">
           
-          {/* Meeting Bot Integration */}
+          {/* Meeting Bot Integration - ENHANCED */}
           <Card className="glass-card border-black/10">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Bot className="h-5 w-5" />
                 Meeting Bot
+                {currentBotSession && (
+                  <Badge className="bg-green-500/20 text-green-700">
+                    <Activity className="h-3 w-3 mr-1" />
+                    Active
+                  </Badge>
+                )}
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -1278,6 +1443,33 @@ export default function RecordPage() {
                 </div>
               )}
 
+              {/* Bot Settings - NEW */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Zap className="h-4 w-4" />
+                    <span className="text-sm font-medium">Auto Record</span>
+                  </div>
+                  <Switch
+                    checked={autoRecordMeetings}
+                    onCheckedChange={setAutoRecordMeetings}
+                    disabled={!user}
+                  />
+                </div>
+                
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Brain className="h-4 w-4" />
+                    <span className="text-sm font-medium">AI Transcription</span>
+                  </div>
+                  <Switch
+                    checked={autoTranscribe}
+                    onCheckedChange={setAutoTranscribe}
+                    disabled={!user}
+                  />
+                </div>
+              </div>
+
               {/* Bot Action Button */}
               <Button
                 onClick={joinMeetingAndRecord}
@@ -1303,6 +1495,35 @@ export default function RecordPage() {
               </div>
             </CardContent>
           </Card>
+
+          {/* Active Bot Sessions - NEW */}
+          {activeMeetingSessions.length > 0 && (
+            <Card className="glass-card border-black/10">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Activity className="h-5 w-5" />
+                  Active Sessions ({activeMeetingSessions.length})
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  {activeMeetingSessions.map((session) => (
+                    <div key={session.id} className="glass-card p-3 border border-black/5">
+                      <div className="flex items-center justify-between mb-2">
+                        <h4 className="font-medium text-black text-sm">{session.meetingTitle}</h4>
+                        <Badge className={getBotStatusColor(session.status)}>
+                          {session.status}
+                        </Badge>
+                      </div>
+                      <p className="text-xs text-black/60">
+                        {getPlatformIcon(session.platform)} {session.platform} • Started {session.joinTime.toLocaleTimeString()}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
 
           {/* Recording Mode Selection */}
           <Card className="glass-card border-black/10">
@@ -1641,7 +1862,7 @@ export default function RecordPage() {
                     <Button
                       onClick={stopRecording}
                       disabled={isUploading}
-                      className="col-span-2 glass-button bg-black text-black hover:bg-gray-800 hover:scale-105 transition-all h-12 disabled:opacity-50"
+                      className="col-span-2 bg-black text-white hover:bg-gray-800 hover:scale-105 transition-all h-12 disabled:opacity-50"
                     >
                       <Square className="mr-2 h-4 w-4" />
                       {isUploading ? 'Saving...' : 
@@ -1739,7 +1960,7 @@ export default function RecordPage() {
             <Card className="glass-card border-black/10">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
-                  <Zap className="h-5 w-5" />
+                  <Brain className="h-5 w-5" />
                   AI Extracted Tasks
                   <Badge className="bg-blue-500/20 text-blue-700">
                     {extractedTasks.length} detected

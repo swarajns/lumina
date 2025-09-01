@@ -2,7 +2,55 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
 import crypto from 'crypto'
 
-export async function POST(request: NextRequest) {
+// Define TypeScript interfaces
+interface CustomerDetails {
+  id?: string
+  customer_id?: string
+}
+
+interface OrderTags {
+  planName?: string
+  billing?: string
+}
+
+interface Order {
+  plan_name?: string
+  billing_cycle?: string
+  order_tags?: OrderTags
+  id?: string
+  order_id?: string
+}
+
+interface Payment {
+  payment_amount?: number
+}
+
+interface WebhookData {
+  customer_details?: CustomerDetails
+  order?: Order
+  payment?: Payment
+}
+
+interface WebhookPayload {
+  type: string
+  data: WebhookData
+}
+
+interface SubscriptionRecord {
+  id: string
+  user_id: string
+  plan_name: string
+  billing_cycle: string
+  status: string
+  activated_at: string
+  expires_at: string
+  amount_paid: number
+  cashfree_order_id: string
+  created_at: string
+  updated_at: string
+}
+
+export async function POST(request: NextRequest): Promise<NextResponse> {
   try {
     console.log('🔥 Webhook received!')
 
@@ -32,7 +80,7 @@ export async function POST(request: NextRequest) {
 
     console.log('Signature verified')
 
-    const jsonData = JSON.parse(body)
+    const jsonData: WebhookPayload = JSON.parse(body)
 
     if (jsonData.type === 'PAYMENT_SUCCESS_WEBHOOK') {
       console.log('Processing payment success webhook')
@@ -51,11 +99,11 @@ export async function POST(request: NextRequest) {
   }
 }
 
-export async function GET() {
+export async function GET(): Promise<NextResponse> {
   return NextResponse.json({ message: 'Webhook endpoint is alive' })
 }
 
-async function processPaymentSuccess(data: any) {
+async function processPaymentSuccess(data: WebhookData): Promise<void> {
   try {
     const userId = data.customer_details?.id || data.customer_details?.customer_id
     const planName = data.order?.plan_name || data.order?.order_tags?.planName || 'Unknown'
@@ -63,8 +111,8 @@ async function processPaymentSuccess(data: any) {
     const amountPaid = data.payment?.payment_amount || 0
     const activatedAt = new Date()
     const expiresAt = billing === 'yearly' 
-        ? new Date(activatedAt.getTime() + 365*24*60*60*1000)
-        : new Date(activatedAt.getTime() + 30*24*60*60*1000)
+        ? new Date(activatedAt.getTime() + 365 * 24 * 60 * 60 * 1000)
+        : new Date(activatedAt.getTime() + 30 * 24 * 60 * 60 * 1000)
     const orderId = data.order?.id || data.order?.order_id
 
     if (!userId) {
@@ -74,22 +122,23 @@ async function processPaymentSuccess(data: any) {
 
     console.log('Activating subscription for user:', userId, planName)
 
+    const subscriptionRecord: Omit<SubscriptionRecord, 'id'> & { id?: string } = {
+      id: crypto.randomUUID(),
+      user_id: userId,
+      plan_name: planName,
+      billing_cycle: billing,
+      status: 'active',
+      activated_at: activatedAt.toISOString(),
+      expires_at: expiresAt.toISOString(),
+      amount_paid: amountPaid,
+      cashfree_order_id: orderId || '',
+      created_at: activatedAt.toISOString(),
+      updated_at: activatedAt.toISOString(),
+    }
+
     const { error } = await supabase
       .from('subscriptions')
-      .upsert({
-        id: crypto.randomUUID(),  // or omit to auto-generate
-        user_id: userId,
-        plan_name: planName,
-        billing_cycle: billing,
-        status: 'active',
-        activated_at: activatedAt.toISOString(),
-        expires_at: expiresAt.toISOString(),
-        amount_paid: amountPaid,
-        cashfree_order_id: orderId,
-        created_at: activatedAt.toISOString(),
-        updated_at: activatedAt.toISOString(),
-      },
-      { onConflict: 'cashfree_order_id'})
+      .upsert(subscriptionRecord, { onConflict: 'cashfree_order_id' })
 
     if (error) {
       console.error('Failed to update subscription:', error)
@@ -101,7 +150,31 @@ async function processPaymentSuccess(data: any) {
   }
 }
 
-async function processPaymentFailed(data: any) {
+async function processPaymentFailed(data: WebhookData): Promise<void> {
   console.log('Payment failed:', data)
   // Optionally handle failed payment logic here
+  
+  try {
+    const userId = data.customer_details?.id || data.customer_details?.customer_id
+    const orderId = data.order?.id || data.order?.order_id
+
+    if (userId && orderId) {
+      // Update subscription status to failed or handle accordingly
+      const { error } = await supabase
+        .from('subscriptions')
+        .update({ 
+          status: 'failed',
+          updated_at: new Date().toISOString()
+        })
+        .eq('cashfree_order_id', orderId)
+
+      if (error) {
+        console.error('Failed to update failed payment status:', error)
+      } else {
+        console.log('Payment failure status updated successfully')
+      }
+    }
+  } catch (err) {
+    console.error('Error processing payment failure:', err)
+  }
 }

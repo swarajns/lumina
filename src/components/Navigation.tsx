@@ -14,14 +14,12 @@ import {
   Users, 
   Bell, 
   BarChart3,
-  Home,
   Crown,
   Plus
 } from 'lucide-react'
 import { useSubscription } from '@/context/SubscriptionContext'
 
 const navigation = [
-  { name: 'Home', href: '/', icon: Home },
   { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
   { name: 'Record', href: '/record', icon: Mic },
   { name: 'Upload', href: '/upload', icon: Upload },
